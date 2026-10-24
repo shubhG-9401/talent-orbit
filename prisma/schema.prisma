@@ -1,0 +1,173 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  STUDENT
+  HOST
+}
+
+enum OpportunityType {
+  HACKATHON
+  INTERNSHIP
+  WORKSHOP
+  MEETUP
+}
+
+enum ParticipationMode {
+  SOLO_ONLY
+  TEAM_ONLY
+  SOLO_OR_TEAM
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TaskStatus {
+  PENDING
+  SUBMITTED
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id              String           @id @default(uuid())
+  email           String           @unique
+  name            String
+  role            Role             @default(STUDENT)
+  city            String?
+  bio             String?
+  skills          String[]         @default([])
+  githubUsername  String?
+  linkedinUrl     String?
+  createdAt       DateTime         @default(now())
+
+  hostedEvents    Event[]          @relation("HostEvents")
+  registrations   Registration[]
+  teamsLed        Team[]           @relation("TeamLeader")
+  teamMembers     TeamMember[]
+  taskSubmissions TaskSubmission[]
+  chatMessages    ChatMessage[]
+}
+
+model Event {
+  id                  String            @id @default(uuid())
+  hostId              String
+  host                User              @relation("HostEvents", fields: [hostId], references: [id])
+  type                OpportunityType
+  title               String
+  description         String            @db.Text
+  city                String
+  isRemote            Boolean           @default(false)
+  requiredSkills      String[]          @default([])
+  rewardOrStipend     String?
+  participationMode   ParticipationMode @default(SOLO_OR_TEAM)
+  minTeamSize         Int               @default(1)
+  maxTeamSize         Int               @default(4)
+  requiresAppDownload Boolean           @default(false)
+  appDownloadUrl      String?
+  deadline            DateTime
+  createdAt           DateTime          @default(now())
+
+  registrations       Registration[]
+  teams               Team[]
+  tasks               EventTask[]
+  chatChannels        ChatChannel[]
+}
+
+model Team {
+  id           String         @id @default(uuid())
+  eventId      String
+  event        Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name         String
+  inviteCode   String         @unique
+  leaderId     String
+  leader       User           @relation("TeamLeader", fields: [leaderId], references: [id])
+  members      TeamMember[]
+  registration Registration?
+  chatChannels ChatChannel[]
+  createdAt    DateTime       @default(now())
+}
+
+model TeamMember {
+  id       String   @id @default(uuid())
+  teamId   String
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+}
+
+model Registration {
+  id                   String            @id @default(uuid())
+  eventId              String
+  event                Event             @relation(fields: [eventId], references: [id])
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id])
+  teamId               String?           @unique
+  team                 Team?             @relation(fields: [teamId], references: [id])
+  status               ApplicationStatus @default(PENDING)
+  completedAppDownload Boolean           @default(false)
+  createdAt            DateTime          @default(now())
+
+  @@unique([eventId, userId])
+}
+
+model EventTask {
+  id          String           @id @default(uuid())
+  eventId     String
+  event       Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  title       String
+  description String           @db.Text
+  deadline    DateTime?
+  isRequired  Boolean          @default(true)
+  submissions TaskSubmission[]
+  createdAt   DateTime         @default(now())
+}
+
+model TaskSubmission {
+  id            String     @id @default(uuid())
+  taskId        String
+  task          EventTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submissionUrl String?    // APK link, GitHub repo, or Figma file
+  notes         String?
+  status        TaskStatus @default(PENDING)
+  submittedAt   DateTime   @default(now())
+
+  @@unique([taskId, userId])
+}
+
+model ChatChannel {
+  id        String        @id @default(uuid())
+  eventId   String
+  event     Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  teamId    String?       // Nullable: if null, it's an announcement/host channel; otherwise team private chat
+  team      Team?         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  isHostDM  Boolean       @default(false)
+  studentId String?       // Set if it is a 1-on-1 DM between student and host
+  messages  ChatMessage[]
+  createdAt DateTime      @default(now())
+}
+
+model ChatMessage {
+  id        String      @id @default(uuid())
+  channelId String
+  channel   ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  text      String      @db.Text
+  mediaUrl  String?
+  createdAt DateTime    @default(now())
+}
